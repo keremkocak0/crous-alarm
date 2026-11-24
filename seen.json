@@ -1,9 +1,10 @@
 {
- "seen": [
-  "3006",
+ "current": [
+  "2402",
   "2704",
-  "2402"
+  "3006"
  ],
  "initialized": true,
- "last_error_notify": 0
+ "last_error_notify": 0,
+ "notified": {}
 }
