@@ -1,0 +1,39 @@
+name: CROUS alarm
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # 5 dakikada bir (GitHub bazen gecikmeli çalıştırır)
+  workflow_dispatch:         # elle "Run workflow" ile test için
+
+permissions:
+  contents: write
+
+concurrency:
+  group: crous-alarm
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install requests
+
+      - name: Check CROUS
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python crous_watch.py
+
+      - name: Save seen rooms
+        run: |
+          git config user.name "crous-bot"
+          git config user.email "crous-bot@users.noreply.github.com"
+          git add seen.json
+          git diff --cached --quiet || (git commit -m "seen update" && git push)
