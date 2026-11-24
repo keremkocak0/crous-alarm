@@ -32,6 +32,7 @@ IDF_DEPTS = {"75", "77", "78", "91", "92", "93", "94", "95"}
 PRIORITY_DEPTS = {"75", "92", "93", "94"}
 
 ERROR_NOTIFY_EVERY = 6 * 3600  # aynı hata için en fazla 6 saatte bir uyar
+RENOTIFY_AFTER = 6 * 3600      # listeden düşüp geri gelen oda için tekrar haber ver
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -209,14 +210,22 @@ def notify(title, message, click=None, priority=3, tags=None):
 
 def load_state():
     try:
-        return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
-        return {"seen": [], "initialized": False, "last_error_notify": 0}
+        state = {}
+    state.setdefault("initialized", False)
+    state.setdefault("last_error_notify", 0)
+    # eski sürümden kalan "seen" listesi: o odalar şu an listede kabul edilir
+    state.setdefault("current", state.pop("seen", []))
+    state.setdefault("notified", {})
+    return state
 
 
 def save_state(state):
-    state["seen"] = state["seen"][-3000:]
-    STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
+    cutoff = time.time() - 30 * 86400
+    state["notified"] = {k: v for k, v in state["notified"].items() if v > cutoff}
+    STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=1, sort_keys=True),
+                          encoding="utf-8")
 
 
 def in_area(room):
@@ -260,8 +269,14 @@ def main():
         save_state(state)
         return
 
-    seen = set(state["seen"])
-    new_rooms = [room for room in rooms if room["id"] not in seen]
+    # Bir önceki kontrolde listede olmayan oda "yeni" sayılır (ilk kez çıkan ya da
+    # listeden düşüp geri gelen). Aynı oda için 6 saatte bir defadan fazla uyarmaz.
+    previous = set(state["current"])
+    new_rooms = [
+        room for room in rooms
+        if room["id"] not in previous
+        and now - state["notified"].get(room["id"], 0) > RENOTIFY_AFTER
+    ]
 
     if not state.get("initialized"):
         listing = "\n".join(f"• {describe(r)}" for r in rooms[:5]) or "Şu an bölgede boş oda yok."
@@ -275,8 +290,9 @@ def main():
             notify(f"{'🔥' if near else '🏠'} Yeni CROUS odası ({room['postal'] or '?'})",
                    describe(room) + "\nTarihleri 15.01.2027 – 03.07.2027 olarak dene ve hemen başvur.",
                    click=room_url(room["id"]), priority=5 if near else 4)
+            state["notified"][room["id"]] = now
 
-    state["seen"] = state["seen"] + [r["id"] for r in rooms if r["id"] not in seen]
+    state["current"] = sorted(r["id"] for r in rooms)
     state["last_error_notify"] = 0
     save_state(state)
 
