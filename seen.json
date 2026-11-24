@@ -1,10 +1,11 @@
 {
  "current": [
-  "2402",
-  "2704",
+  "2052",
   "3006"
  ],
  "initialized": true,
  "last_error_notify": 0,
- "notified": {}
+ "notified": {
+  "2052": 1795556118.7205043
+ }
 }
